@@ -34,6 +34,7 @@ cargo build --release
 
 - This crate currently tracks the verified `ecape-js` behavior.
 - It uses Cartesian wind components internally: `u > 0` eastward, `v > 0` northward.
+- Supported storm-motion modes are `right_moving` (Bunkers RM), `left_moving` (Bunkers LM), `mean_wind`, and `user_defined`.
 
 ## Acknowledgements
 
