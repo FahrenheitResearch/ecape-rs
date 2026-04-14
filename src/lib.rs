@@ -76,9 +76,9 @@ fn normalized_option_token(value: &str) -> String {
 impl CapeType {
     pub fn parse_normalized(value: &str) -> Result<Self, ParseEcapeOptionError> {
         match normalized_option_token(value).as_str() {
-            "sb" | "surface" | "surface_based" => Ok(Self::SurfaceBased),
-            "ml" | "mixed_layer" => Ok(Self::MixedLayer),
-            "mu" | "most_unstable" => Ok(Self::MostUnstable),
+            "sb" | "surface" | "surface_based" | "surfacebased" => Ok(Self::SurfaceBased),
+            "ml" | "mixed_layer" | "mixedlayer" => Ok(Self::MixedLayer),
+            "mu" | "most_unstable" | "mostunstable" => Ok(Self::MostUnstable),
             "user" | "user_defined" => Ok(Self::UserDefined),
             _ => Err(ParseEcapeOptionError::new("cape_type", value)),
         }
@@ -112,10 +112,14 @@ impl<'de> Deserialize<'de> for CapeType {
 impl StormMotionType {
     pub fn parse_normalized(value: &str) -> Result<Self, ParseEcapeOptionError> {
         match normalized_option_token(value).as_str() {
-            "right_moving" | "bunkers_rm" | "rm" => Ok(Self::RightMoving),
-            "left_moving" | "bunkers_lm" | "lm" => Ok(Self::LeftMoving),
-            "mean_wind" | "mean" => Ok(Self::MeanWind),
-            "user" | "user_defined" => Ok(Self::UserDefined),
+            "right_moving" | "right" | "bunkers_right" | "bunkers_rm" | "rm" => {
+                Ok(Self::RightMoving)
+            }
+            "left_moving" | "left" | "bunkers_left" | "bunkers_lm" | "lm" => {
+                Ok(Self::LeftMoving)
+            }
+            "mean_wind" | "meanwind" | "mean" | "mw" => Ok(Self::MeanWind),
+            "user" | "user_defined" | "custom" => Ok(Self::UserDefined),
             _ => Err(ParseEcapeOptionError::new("storm_motion_type", value)),
         }
     }

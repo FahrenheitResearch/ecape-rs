@@ -88,6 +88,10 @@ fn option_parsing_accepts_wrapper_aliases() {
         StormMotionType::RightMoving
     );
     assert_eq!(
+        "right".parse::<StormMotionType>().unwrap(),
+        StormMotionType::RightMoving
+    );
+    assert_eq!(
         "rm".parse::<StormMotionType>().unwrap(),
         StormMotionType::RightMoving
     );
@@ -97,6 +101,10 @@ fn option_parsing_accepts_wrapper_aliases() {
     );
     assert_eq!(
         "bunkers_lm".parse::<StormMotionType>().unwrap(),
+        StormMotionType::LeftMoving
+    );
+    assert_eq!(
+        "left".parse::<StormMotionType>().unwrap(),
         StormMotionType::LeftMoving
     );
     assert_eq!(
@@ -110,6 +118,10 @@ fn option_parsing_accepts_wrapper_aliases() {
     assert_eq!(
         "mean".parse::<StormMotionType>().unwrap(),
         StormMotionType::MeanWind
+    );
+    assert_eq!(
+        "custom".parse::<StormMotionType>().unwrap(),
+        StormMotionType::UserDefined
     );
 
     assert!("nonsense".parse::<CapeType>().is_err());
