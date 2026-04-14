@@ -1,4 +1,4 @@
-use ecape_rs::{calc_ecape_parcel, CapeType, ParcelOptions, StormMotionType};
+use ecape_rs::{CapeType, ParcelOptions, StormMotionType, calc_ecape_parcel};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 use std::time::Instant;
@@ -77,16 +77,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options_payload = payload.options;
     let options = ParcelOptions {
         cape_type: parse_cape_type(options_payload.as_ref().and_then(|o| o.cape_type.clone())),
-        storm_motion_type: parse_storm_motion_type(options_payload.as_ref().and_then(|o| o.storm_motion_type.clone())),
+        storm_motion_type: parse_storm_motion_type(
+            options_payload
+                .as_ref()
+                .and_then(|o| o.storm_motion_type.clone()),
+        ),
         origin_pressure_pa: options_payload.as_ref().and_then(|o| o.origin_pressure_pa),
         origin_height_m: options_payload.as_ref().and_then(|o| o.origin_height_m),
-        mixed_layer_depth_pa: options_payload.as_ref().and_then(|o| o.mixed_layer_depth_pa).or(Some(10000.0)),
-        inflow_layer_bottom_m: options_payload.as_ref().and_then(|o| o.inflow_layer_bottom_m).or(Some(0.0)),
-        inflow_layer_top_m: options_payload.as_ref().and_then(|o| o.inflow_layer_top_m).or(Some(1000.0)),
+        mixed_layer_depth_pa: options_payload
+            .as_ref()
+            .and_then(|o| o.mixed_layer_depth_pa)
+            .or(Some(10000.0)),
+        inflow_layer_bottom_m: options_payload
+            .as_ref()
+            .and_then(|o| o.inflow_layer_bottom_m)
+            .or(Some(0.0)),
+        inflow_layer_top_m: options_payload
+            .as_ref()
+            .and_then(|o| o.inflow_layer_top_m)
+            .or(Some(1000.0)),
         storm_motion_u_ms: options_payload.as_ref().and_then(|o| o.storm_motion_u_ms),
         storm_motion_v_ms: options_payload.as_ref().and_then(|o| o.storm_motion_v_ms),
         entrainment_rate: options_payload.as_ref().and_then(|o| o.entrainment_rate),
-        pseudoadiabatic: options_payload.as_ref().and_then(|o| o.pseudoadiabatic).or(Some(true)),
+        pseudoadiabatic: options_payload
+            .as_ref()
+            .and_then(|o| o.pseudoadiabatic)
+            .or(Some(true)),
     };
 
     let pressure_pa: Vec<f64> = payload.pressure_hpa.iter().map(|v| v * 100.0).collect();

@@ -265,19 +265,27 @@ fn find_bracketing_index_asc(values: &[f64], target: f64) -> usize {
 
 fn interp_pressure_to_height(heights: &[f64], pressures: &[f64], z: f64) -> f64 {
     let i = find_bracketing_index_asc(heights, z);
-    linear_interp(heights[i], heights[i + 1], pressures[i], pressures[i + 1], z)
+    linear_interp(
+        heights[i],
+        heights[i + 1],
+        pressures[i],
+        pressures[i + 1],
+        z,
+    )
 }
 
 fn interp_height_to_pressure(pressures: &[f64], heights: &[f64], p: f64) -> f64 {
     let i = find_bracketing_index_desc(pressures, p);
-    linear_interp(pressures[i], pressures[i + 1], heights[i], heights[i + 1], p)
+    linear_interp(
+        pressures[i],
+        pressures[i + 1],
+        heights[i],
+        heights[i + 1],
+        p,
+    )
 }
 
-fn interp_profile_at_height(
-    heights: &[f64],
-    values: &[f64],
-    z: f64,
-) -> f64 {
+fn interp_profile_at_height(heights: &[f64], values: &[f64], z: f64) -> f64 {
     if z <= heights[0] {
         return values[0];
     }
@@ -320,8 +328,9 @@ fn r_sat(temp_k: f64, pressure_pa: f64, ice_flag: i32) -> f64 {
     if ice_flag == 0 {
         let term1 = (CPV - CPL) / RV;
         let term2 = (LV_TRIP - T_TRIP * (CPV - CPL)) / RV;
-        let esl =
-            ((temp_k - T_TRIP) * term2 / (temp_k * T_TRIP)).exp() * VAPOR_PRES_REF * (temp_k / T_TRIP).powf(term1);
+        let esl = ((temp_k - T_TRIP) * term2 / (temp_k * T_TRIP)).exp()
+            * VAPOR_PRES_REF
+            * (temp_k / T_TRIP).powf(term1);
         PHI * esl / (pressure_pa - esl).max(1e-9)
     } else if ice_flag == 1 {
         let qsat_l = r_sat(temp_k, pressure_pa, 0);
@@ -330,8 +339,9 @@ fn r_sat(temp_k: f64, pressure_pa: f64, ice_flag: i32) -> f64 {
     } else {
         let term1 = (CPV - CPI) / RV;
         let term2 = (LV_TRIP - T_TRIP * (CPV - CPI)) / RV;
-        let esl =
-            ((temp_k - T_TRIP) * term2 / (temp_k * T_TRIP)).exp() * VAPOR_PRES_REF * (temp_k / T_TRIP).powf(term1);
+        let esl = ((temp_k - T_TRIP) * term2 / (temp_k * T_TRIP)).exp()
+            * VAPOR_PRES_REF
+            * (temp_k / T_TRIP).powf(term1);
         PHI * esl / (pressure_pa - esl).max(1e-9)
     }
 }
@@ -374,11 +384,820 @@ fn density_temperature(temp_k: f64, qv_kgkg: f64, qt_kgkg: f64) -> f64 {
 
 fn equivalent_potential_temperature(temp_k: f64, dewpoint_k: f64, pressure_pa: f64) -> f64 {
     let q = specific_humidity_from_dewpoint(pressure_pa, dewpoint_k);
-    let e = 611.2 * ((17.67 * (dewpoint_k - KELVIN_OFFSET)) / ((dewpoint_k - KELVIN_OFFSET) + 243.5)).exp();
+    let e = 611.2
+        * ((17.67 * (dewpoint_k - KELVIN_OFFSET)) / ((dewpoint_k - KELVIN_OFFSET) + 243.5)).exp();
     let w = PHI * e / (pressure_pa - e).max(1e-9);
-    let tlcl = 1.0 / (1.0 / (dewpoint_k - 56.0).max(1e-6) + ((temp_k / dewpoint_k).max(1e-9)).ln() / 800.0) + 56.0;
+    let tlcl = 1.0
+        / (1.0 / (dewpoint_k - 56.0).max(1e-6) + ((temp_k / dewpoint_k).max(1e-9)).ln() / 800.0)
+        + 56.0;
     let theta_l = temp_k * (P0 / pressure_pa).powf(0.2854 * (1.0 - 0.28 * q));
     theta_l * (((3376.0 / tlcl) - 2.54) * w * (1.0 + 0.81 * w)).exp()
+}
+
+fn closest_index(values: &[f64], target: f64) -> usize {
+    values
+        .iter()
+        .enumerate()
+        .min_by(|a, b| {
+            (a.1 - target)
+                .abs()
+                .partial_cmp(&(b.1 - target).abs())
+                .unwrap()
+        })
+        .map(|(idx, _)| idx)
+        .unwrap_or(0)
+}
+
+fn interp_log_pressure(target_hpa: f64, pressure_hpa: &[f64], values: &[f64]) -> f64 {
+    let n = pressure_hpa.len();
+    if n == 0 {
+        return 0.0;
+    }
+    if target_hpa >= pressure_hpa[0] {
+        return values[0];
+    }
+    if target_hpa <= pressure_hpa[n - 1] {
+        return values[n - 1];
+    }
+    for i in 1..n {
+        if pressure_hpa[i] <= target_hpa {
+            let log_p0 = pressure_hpa[i - 1].ln();
+            let log_p1 = pressure_hpa[i].ln();
+            let log_pt = target_hpa.ln();
+            let frac = (log_pt - log_p0) / (log_p1 - log_p0);
+            return values[i - 1] + frac * (values[i] - values[i - 1]);
+        }
+    }
+    values[n - 1]
+}
+
+fn interp_linear_pressure(target_hpa: f64, pressure_hpa: &[f64], values: &[f64]) -> f64 {
+    let n = pressure_hpa.len();
+    if n == 0 {
+        return 0.0;
+    }
+    if target_hpa >= pressure_hpa[0] {
+        return values[0];
+    }
+    if target_hpa <= pressure_hpa[n - 1] {
+        return values[n - 1];
+    }
+    for i in 1..n {
+        if pressure_hpa[i] <= target_hpa {
+            let p0 = pressure_hpa[i - 1];
+            let p1 = pressure_hpa[i];
+            let frac = (target_hpa - p0) / (p1 - p0);
+            return values[i - 1] + frac * (values[i] - values[i - 1]);
+        }
+    }
+    values[n - 1]
+}
+
+fn log_pressure_intersections_direction(
+    pressure_hpa: &[f64],
+    y1: &[f64],
+    y2: &[f64],
+    direction: &str,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut x_out = Vec::new();
+    let mut y_out = Vec::new();
+    let tol = 1e-9;
+    for i in 0..pressure_hpa.len().saturating_sub(1) {
+        let d0 = y1[i] - y2[i];
+        let d1 = y1[i + 1] - y2[i + 1];
+        if !(pressure_hpa[i].is_finite()
+            && pressure_hpa[i + 1].is_finite()
+            && d0.is_finite()
+            && d1.is_finite())
+        {
+            continue;
+        }
+
+        let mut crossing = match direction {
+            "increasing" => (d0 <= 0.0 && d1 > 0.0) || (d0 < 0.0 && d1 >= 0.0),
+            "decreasing" => (d0 >= 0.0 && d1 < 0.0) || (d0 > 0.0 && d1 <= 0.0),
+            _ => false,
+        };
+        if !crossing && d0.abs() <= tol {
+            if direction == "increasing" && d1 > 0.0 {
+                crossing = true;
+            } else if direction == "decreasing" && d1 < 0.0 {
+                crossing = true;
+            }
+        }
+        if !crossing {
+            continue;
+        }
+
+        let frac = if (d1 - d0).abs() <= tol {
+            0.0
+        } else {
+            (-d0 / (d1 - d0)).clamp(0.0, 1.0)
+        };
+        let log_px =
+            pressure_hpa[i].ln() + frac * (pressure_hpa[i + 1].ln() - pressure_hpa[i].ln());
+        let x_val = log_px.exp();
+        let y_val = y1[i] + frac * (y1[i + 1] - y1[i]);
+        if x_out
+            .last()
+            .is_some_and(|last| (x_val - last).abs() <= 1e-6)
+        {
+            continue;
+        }
+        x_out.push(x_val);
+        y_out.push(y_val);
+    }
+    (x_out, y_out)
+}
+
+fn find_log_pressure_intersections_native(
+    pressure_hpa: &[f64],
+    profile_a: &[f64],
+    profile_b: &[f64],
+) -> (Vec<f64>, Vec<f64>) {
+    let mut x_out = Vec::new();
+    let mut y_out = Vec::new();
+    let tol = 1e-12;
+    for idx in 0..pressure_hpa.len().saturating_sub(1) {
+        let p0 = pressure_hpa[idx];
+        let p1 = pressure_hpa[idx + 1];
+        let d0 = profile_a[idx] - profile_b[idx];
+        let d1 = profile_a[idx + 1] - profile_b[idx + 1];
+        if !(p0.is_finite() && p1.is_finite() && d0.is_finite() && d1.is_finite()) {
+            continue;
+        }
+        if d0.abs() <= tol {
+            x_out.push(p0);
+            y_out.push(profile_b[idx]);
+            continue;
+        }
+        if d0 * d1 > 0.0 {
+            continue;
+        }
+
+        let log_p0 = p0.ln();
+        let log_p1 = p1.ln();
+        let log_px = log_p0 - d0 * (log_p1 - log_p0) / (d1 - d0);
+        let frac = (log_px - log_p0) / (log_p1 - log_p0);
+        x_out.push(log_px.exp());
+        y_out.push(profile_b[idx] + frac * (profile_b[idx + 1] - profile_b[idx]));
+    }
+    (x_out, y_out)
+}
+
+fn select_profile_intersection(
+    pressures_hpa: &[f64],
+    temperatures_c: &[f64],
+    which: &str,
+) -> (Option<f64>, Option<f64>) {
+    if which == "all" {
+        return (
+            pressures_hpa.first().copied(),
+            temperatures_c.first().copied(),
+        );
+    }
+    if pressures_hpa.is_empty() {
+        return (None, None);
+    }
+    let idx = match which {
+        "bottom" => 0,
+        "top" => pressures_hpa.len() - 1,
+        _ => pressures_hpa.len() - 1,
+    };
+    (Some(pressures_hpa[idx]), Some(temperatures_c[idx]))
+}
+
+fn multiple_el_lfc_options_native(
+    intersect_pressures_hpa: &[f64],
+    intersect_temperatures_c: &[f64],
+    valid_mask: &[bool],
+    which: &str,
+) -> (Option<f64>, Option<f64>) {
+    let mut p_list = Vec::new();
+    let mut t_list = Vec::new();
+    for i in 0..intersect_pressures_hpa.len() {
+        if valid_mask.get(i).copied().unwrap_or(false) {
+            p_list.push(intersect_pressures_hpa[i]);
+            t_list.push(intersect_temperatures_c[i]);
+        }
+    }
+    match which {
+        "top" | "bottom" | "all" => select_profile_intersection(&p_list, &t_list, which),
+        _ => select_profile_intersection(&p_list, &t_list, "top"),
+    }
+}
+
+fn lfc_native_profile(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    parcel_temperature_c: &[f64],
+    dewpoint_start_c: f64,
+    which: &str,
+) -> (Option<f64>, Option<f64>) {
+    let (x, y) = if (parcel_temperature_c[0] - temperature_c[0]).abs() <= 1e-9 {
+        log_pressure_intersections_direction(
+            &pressure_hpa[1..],
+            &parcel_temperature_c[1..],
+            &temperature_c[1..],
+            "increasing",
+        )
+    } else {
+        log_pressure_intersections_direction(
+            pressure_hpa,
+            parcel_temperature_c,
+            temperature_c,
+            "increasing",
+        )
+    };
+
+    let (lcl_p, lcl_t) =
+        wx_math::thermo::drylift(pressure_hpa[0], parcel_temperature_c[0], dewpoint_start_c);
+    if x.is_empty() {
+        let mask: Vec<usize> = pressure_hpa
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| if *p < lcl_p { Some(i) } else { None })
+            .collect();
+        if mask
+            .iter()
+            .all(|&i| parcel_temperature_c[i] <= temperature_c[i] + 1e-9)
+        {
+            return (None, None);
+        }
+        return (Some(lcl_p), Some(lcl_t));
+    }
+    let valid: Vec<bool> = x.iter().map(|p| *p < lcl_p).collect();
+    if !valid.iter().any(|v| *v) {
+        let (el_x, _) = log_pressure_intersections_direction(
+            &pressure_hpa[1..],
+            &parcel_temperature_c[1..],
+            &temperature_c[1..],
+            "decreasing",
+        );
+        if !el_x.is_empty() && el_x.iter().copied().fold(f64::INFINITY, f64::min) > lcl_p {
+            return (None, None);
+        }
+        return (Some(lcl_p), Some(lcl_t));
+    }
+    multiple_el_lfc_options_native(&x, &y, &valid, which)
+}
+
+fn el_native_profile(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    parcel_temperature_c: &[f64],
+    which: &str,
+) -> (Option<f64>, Option<f64>) {
+    if parcel_temperature_c.last().copied().unwrap_or(f64::NAN)
+        > temperature_c.last().copied().unwrap_or(f64::INFINITY)
+    {
+        return (None, None);
+    }
+    let (x, y) = log_pressure_intersections_direction(
+        &pressure_hpa[1..],
+        &parcel_temperature_c[1..],
+        &temperature_c[1..],
+        "decreasing",
+    );
+    let (lcl_p, _) = wx_math::thermo::drylift(pressure_hpa[0], temperature_c[0], dewpoint_c[0]);
+    let valid: Vec<bool> = x.iter().map(|p| *p < lcl_p).collect();
+    if valid.iter().any(|v| *v) {
+        multiple_el_lfc_options_native(&x, &y, &valid, which)
+    } else {
+        (None, None)
+    }
+}
+
+fn append_zero_crossings_native(
+    pressure_hpa: &[f64],
+    profile_delta: &[f64],
+) -> (Vec<f64>, Vec<f64>) {
+    let zero_profile = vec![0.0; profile_delta.len()];
+    let (crossings_p, crossings_y) = find_log_pressure_intersections_native(
+        &pressure_hpa[1..],
+        &profile_delta[1..],
+        &zero_profile[1..],
+    );
+    let mut pressure_vals = pressure_hpa.to_vec();
+    pressure_vals.extend(crossings_p);
+    let mut profile_vals = profile_delta.to_vec();
+    profile_vals.extend(crossings_y);
+    let mut paired: Vec<(f64, f64)> = pressure_vals
+        .into_iter()
+        .zip(profile_vals.into_iter())
+        .collect();
+    paired.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    paired.dedup_by(|a, b| (a.0 - b.0).abs() <= 1e-6);
+    paired.into_iter().unzip()
+}
+
+fn trapz_log_pressure(x: &[f64], y: &[f64]) -> f64 {
+    if x.len() < 2 || y.len() < 2 {
+        return 0.0;
+    }
+    let mut total = 0.0;
+    for i in 1..x.len() {
+        total += 0.5 * (y[i - 1] + y[i]) * (x[i].ln() - x[i - 1].ln());
+    }
+    total
+}
+
+fn cape_cin_profile_native(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    parcel_temperature_c: &[f64],
+    which_lfc: &str,
+    which_el: &str,
+) -> (f64, f64) {
+    let (lcl_p, _) = wx_math::thermo::drylift(pressure_hpa[0], temperature_c[0], dewpoint_c[0]);
+    let parcel_start_mixing_ratio =
+        wx_math::thermo::saturation_mixing_ratio(pressure_hpa[0], dewpoint_c[0]) / 1000.0;
+    let below_lcl: Vec<bool> = pressure_hpa.iter().map(|p| *p > lcl_p).collect();
+    let parcel_mixing_ratio: Vec<f64> = pressure_hpa
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            if below_lcl[i] {
+                parcel_start_mixing_ratio
+            } else {
+                wx_math::thermo::saturation_mixing_ratio(*p, parcel_temperature_c[i]) / 1000.0
+            }
+        })
+        .collect();
+    let env_mixing_ratio: Vec<f64> = pressure_hpa
+        .iter()
+        .zip(dewpoint_c.iter())
+        .map(|(p, td)| wx_math::thermo::saturation_mixing_ratio(*p, *td) / 1000.0)
+        .collect();
+    let env_virtual: Vec<f64> = temperature_c
+        .iter()
+        .zip(env_mixing_ratio.iter())
+        .map(|(t, w)| {
+            let t_k = *t + KELVIN_OFFSET;
+            let tv_k = t_k * (1.0 + *w / wx_math::thermo::EPS) / (1.0 + *w);
+            tv_k - KELVIN_OFFSET
+        })
+        .collect();
+    let parcel_virtual: Vec<f64> = parcel_temperature_c
+        .iter()
+        .zip(parcel_mixing_ratio.iter())
+        .map(|(t, w)| {
+            let t_k = *t + KELVIN_OFFSET;
+            let tv_k = t_k * (1.0 + *w / wx_math::thermo::EPS) / (1.0 + *w);
+            tv_k - KELVIN_OFFSET
+        })
+        .collect();
+
+    let (lfc_pressure_hpa, _) = lfc_native_profile(
+        pressure_hpa,
+        &env_virtual,
+        dewpoint_c,
+        &parcel_virtual,
+        dewpoint_c[0],
+        which_lfc,
+    );
+    let Some(lfc_pressure_hpa) = lfc_pressure_hpa else {
+        return (0.0, 0.0);
+    };
+    let (el_pressure_hpa, _) = el_native_profile(
+        pressure_hpa,
+        &env_virtual,
+        dewpoint_c,
+        &parcel_virtual,
+        which_el,
+    );
+    let el_pressure_hpa =
+        el_pressure_hpa.unwrap_or(*pressure_hpa.last().unwrap_or(&lfc_pressure_hpa));
+
+    let delta: Vec<f64> = parcel_virtual
+        .iter()
+        .zip(env_virtual.iter())
+        .map(|(p, e)| p - e)
+        .collect();
+    let (x_vals, y_vals) = append_zero_crossings_native(pressure_hpa, &delta);
+
+    let mut cape_x = Vec::new();
+    let mut cape_y = Vec::new();
+    let mut cin_x = Vec::new();
+    let mut cin_y = Vec::new();
+    for i in 0..x_vals.len() {
+        if x_vals[i] <= lfc_pressure_hpa + 1e-9 && x_vals[i] >= el_pressure_hpa - 1e-9 {
+            cape_x.push(x_vals[i]);
+            cape_y.push(y_vals[i]);
+        }
+        if x_vals[i] >= lfc_pressure_hpa - 1e-9 {
+            cin_x.push(x_vals[i]);
+            cin_y.push(y_vals[i]);
+        }
+    }
+
+    let cape = wx_math::thermo::RD * trapz_log_pressure(&cape_x, &cape_y);
+    let mut cin = wx_math::thermo::RD * trapz_log_pressure(&cin_x, &cin_y);
+    if cin > 0.0 {
+        cin = 0.0;
+    }
+    (cape, cin)
+}
+
+fn snap_height_to_last_level_below_pressure(
+    pressure_hpa: &[f64],
+    height_m: &[f64],
+    crossing_hpa: Option<f64>,
+) -> Option<f64> {
+    let target = crossing_hpa?;
+    let mut last_idx = None;
+    for (idx, pressure) in pressure_hpa.iter().enumerate() {
+        if *pressure > target {
+            last_idx = Some(idx);
+        } else {
+            break;
+        }
+    }
+    Some(height_m[last_idx.unwrap_or(0)])
+}
+
+fn profile_to_met_inputs(
+    pressure_pa: &[f64],
+    temperature_k: &[f64],
+    qv_kgkg: &[f64],
+) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let pressure_hpa: Vec<f64> = pressure_pa.iter().map(|p| p / 100.0).collect();
+    let temperature_c: Vec<f64> = temperature_k.iter().map(|t| t - KELVIN_OFFSET).collect();
+    let dewpoint_c: Vec<f64> = pressure_hpa
+        .iter()
+        .zip(qv_kgkg.iter())
+        .map(|(p, q)| metrust::calc::thermo::dewpoint_from_specific_humidity(*p, *q))
+        .collect();
+    (pressure_hpa, temperature_c, dewpoint_c)
+}
+
+fn metpy_style_mixed_parcel_start(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    depth_hpa: f64,
+) -> (f64, f64, f64) {
+    let theta_k: Vec<f64> = pressure_hpa
+        .iter()
+        .zip(temperature_c.iter())
+        .map(|(p, t)| wx_math::thermo::potential_temperature(*p, *t))
+        .collect();
+    let mixing_ratio_kgkg: Vec<f64> = pressure_hpa
+        .iter()
+        .zip(dewpoint_c.iter())
+        .map(|(p, td)| wx_math::thermo::saturation_mixing_ratio(*p, *td) / 1000.0)
+        .collect();
+
+    let parcel_pressure_hpa = pressure_hpa[0];
+    let mean_theta_k = wx_math::thermo::mixed_layer(pressure_hpa, &theta_k, depth_hpa);
+    let mean_mixing_ratio_kgkg =
+        wx_math::thermo::mixed_layer(pressure_hpa, &mixing_ratio_kgkg, depth_hpa);
+    let parcel_temperature_c =
+        mean_theta_k * wx_math::thermo::exner_function(parcel_pressure_hpa) - KELVIN_OFFSET;
+    let parcel_dewpoint_c =
+        wx_math::thermo::temp_at_mixrat(mean_mixing_ratio_kgkg * 1000.0, parcel_pressure_hpa);
+
+    (parcel_pressure_hpa, parcel_temperature_c, parcel_dewpoint_c)
+}
+
+fn parcel_profile_with_lcl_native(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    if pressure_hpa.is_empty() {
+        return (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    }
+
+    let (p_lcl, _) = wx_math::thermo::drylift(pressure_hpa[0], temperature_c[0], dewpoint_c[0]);
+    let insert_idx = pressure_hpa
+        .iter()
+        .position(|p| *p <= p_lcl)
+        .unwrap_or(pressure_hpa.len());
+
+    let mut pressure_out = pressure_hpa.to_vec();
+    pressure_out.insert(insert_idx, p_lcl);
+
+    let mut temperature_out = temperature_c.to_vec();
+    temperature_out.insert(
+        insert_idx,
+        interp_linear_pressure(p_lcl, pressure_hpa, temperature_c),
+    );
+
+    let mut dewpoint_out = dewpoint_c.to_vec();
+    dewpoint_out.insert(
+        insert_idx,
+        interp_linear_pressure(p_lcl, pressure_hpa, dewpoint_c),
+    );
+
+    let parcel_out =
+        wx_math::thermo::parcel_profile(&pressure_out, temperature_c[0], dewpoint_c[0]);
+
+    (pressure_out, temperature_out, dewpoint_out, parcel_out)
+}
+
+fn package_style_mixed_layer_cape_cin_lfc_el(
+    height_m: &[f64],
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    options: &ParcelOptions,
+) -> CapeCinLfcEl {
+    let depth_hpa = options.mixed_layer_depth_pa.unwrap_or(10000.0) / 100.0;
+    let (parcel_pressure_hpa, parcel_temperature_c, parcel_dewpoint_c) =
+        metpy_style_mixed_parcel_start(pressure_hpa, temperature_c, dewpoint_c, depth_hpa);
+
+    let top_pressure_hpa = pressure_hpa[0] - depth_hpa;
+    let mut pressure_prof = vec![parcel_pressure_hpa];
+    let mut temperature_prof = vec![parcel_temperature_c];
+    let mut dewpoint_prof = vec![parcel_dewpoint_c];
+
+    for i in 0..pressure_hpa.len() {
+        if pressure_hpa[i] < top_pressure_hpa {
+            pressure_prof.push(pressure_hpa[i]);
+            temperature_prof.push(temperature_c[i]);
+            dewpoint_prof.push(dewpoint_c[i]);
+        }
+    }
+
+    let (pressure_prof, temperature_prof, dewpoint_prof, parcel_prof) =
+        parcel_profile_with_lcl_native(&pressure_prof, &temperature_prof, &dewpoint_prof);
+    let (cape_jkg, cin_jkg) = cape_cin_profile_native(
+        &pressure_prof,
+        &temperature_prof,
+        &dewpoint_prof,
+        &parcel_prof,
+        "bottom",
+        "top",
+    );
+    let (lfc_p, _) = lfc_native_profile(
+        &pressure_prof,
+        &temperature_prof,
+        &dewpoint_prof,
+        &parcel_prof,
+        dewpoint_prof[0],
+        "top",
+    );
+    let (el_p, _) = el_native_profile(
+        &pressure_prof,
+        &temperature_prof,
+        &dewpoint_prof,
+        &parcel_prof,
+        "top",
+    );
+
+    CapeCinLfcEl {
+        cape_jkg,
+        cin_jkg,
+        lfc_m: snap_height_to_last_level_below_pressure(pressure_hpa, height_m, lfc_p),
+        el_m: snap_height_to_last_level_below_pressure(pressure_hpa, height_m, el_p),
+        origin_index: 0,
+        pressure_pa: Vec::new(),
+        height_m: Vec::new(),
+        parcel_temperature_k: Vec::new(),
+        buoyancy_ms2: Vec::new(),
+    }
+}
+
+fn reference_parcel_start(
+    _heights: &[f64],
+    pressure_pa: &[f64],
+    temperature_k: &[f64],
+    qv_kgkg: &[f64],
+    options: &ParcelOptions,
+) -> (usize, f64, f64, f64) {
+    let (pressure_hpa, temperature_c, dewpoint_c) =
+        profile_to_met_inputs(pressure_pa, temperature_k, qv_kgkg);
+    match options.cape_type {
+        CapeType::MixedLayer => {
+            let depth_hpa = options.mixed_layer_depth_pa.unwrap_or(10000.0) / 100.0;
+            let (p_start, t_start, td_start) = metpy_style_mixed_parcel_start(
+                &pressure_hpa,
+                &temperature_c,
+                &dewpoint_c,
+                depth_hpa,
+            );
+            (0, p_start, t_start, td_start)
+        }
+        CapeType::MostUnstable => {
+            let (p_start, t_start, td_start) = metrust::calc::thermo::get_most_unstable_parcel(
+                &pressure_hpa,
+                &temperature_c,
+                &dewpoint_c,
+                300.0,
+            );
+            (
+                closest_index(&pressure_hpa, p_start),
+                p_start,
+                t_start,
+                td_start,
+            )
+        }
+        _ => (0, pressure_hpa[0], temperature_c[0], dewpoint_c[0]),
+    }
+}
+
+fn reference_crossing_pressures(
+    pressure_hpa: &[f64],
+    temperature_c: &[f64],
+    dewpoint_c: &[f64],
+    p_start_hpa: f64,
+    t_start_c: f64,
+    td_start_c: f64,
+) -> (Option<f64>, Option<f64>) {
+    let (p_lcl, t_lcl) = wx_math::thermo::drylift(p_start_hpa, t_start_c, td_start_c);
+    let theta_dry_k = (t_start_c + wx_math::thermo::ZEROCNK)
+        * ((1000.0_f64 / p_start_hpa).powf(wx_math::thermo::ROCP));
+    let theta_l_k =
+        (t_lcl + wx_math::thermo::ZEROCNK) * ((1000.0_f64 / p_lcl).powf(wx_math::thermo::ROCP));
+    let theta_l_c = theta_l_k - wx_math::thermo::ZEROCNK;
+    let thetam = theta_l_c - wx_math::thermo::wobf(theta_l_c) + wx_math::thermo::wobf(t_lcl);
+    let mixing_ratio_kgkg = metrust::calc::thermo::mixing_ratio(p_start_hpa, td_start_c) / 1000.0;
+
+    let mut parcel_tv = vec![0.0; pressure_hpa.len()];
+    for i in 0..pressure_hpa.len() {
+        if pressure_hpa[i] >= p_lcl {
+            let t_parcel_k =
+                theta_dry_k * ((pressure_hpa[i] / 1000.0_f64).powf(wx_math::thermo::ROCP));
+            let t_parcel_c = t_parcel_k - wx_math::thermo::ZEROCNK;
+            parcel_tv[i] = (t_parcel_c + wx_math::thermo::ZEROCNK)
+                * (1.0 + mixing_ratio_kgkg / wx_math::thermo::EPS)
+                / (1.0 + mixing_ratio_kgkg)
+                - wx_math::thermo::ZEROCNK;
+        } else {
+            let t_parcel_c = wx_math::thermo::satlift(pressure_hpa[i], thetam);
+            parcel_tv[i] =
+                metrust::calc::thermo::virtual_temp(t_parcel_c, pressure_hpa[i], t_parcel_c);
+        }
+    }
+
+    let mut lfc_p = None;
+    for i in 1..pressure_hpa.len() {
+        if pressure_hpa[i] > p_lcl {
+            continue;
+        }
+        let buoy_prev = parcel_tv[i - 1]
+            - metrust::calc::thermo::virtual_temp(
+                temperature_c[i - 1],
+                pressure_hpa[i - 1],
+                dewpoint_c[i - 1],
+            );
+        let buoy = parcel_tv[i]
+            - metrust::calc::thermo::virtual_temp(temperature_c[i], pressure_hpa[i], dewpoint_c[i]);
+        if buoy_prev <= 0.0 && buoy > 0.0 {
+            let frac = (0.0 - buoy_prev) / (buoy - buoy_prev);
+            lfc_p = Some(pressure_hpa[i - 1] + frac * (pressure_hpa[i] - pressure_hpa[i - 1]));
+            break;
+        }
+        if buoy > 0.0 && pressure_hpa[i] <= p_lcl && pressure_hpa[i - 1] > p_lcl {
+            lfc_p = Some(pressure_hpa[i]);
+            break;
+        }
+    }
+
+    let mut found_positive = false;
+    let mut el_p = None;
+    for i in 1..pressure_hpa.len() {
+        if pressure_hpa[i] > p_lcl {
+            continue;
+        }
+        let buoy_prev = parcel_tv[i - 1]
+            - metrust::calc::thermo::virtual_temp(
+                temperature_c[i - 1],
+                pressure_hpa[i - 1],
+                dewpoint_c[i - 1],
+            );
+        let buoy = parcel_tv[i]
+            - metrust::calc::thermo::virtual_temp(temperature_c[i], pressure_hpa[i], dewpoint_c[i]);
+        if buoy > 0.0 {
+            found_positive = true;
+        }
+        if found_positive && buoy_prev > 0.0 && buoy <= 0.0 {
+            let frac = (0.0 - buoy_prev) / (buoy - buoy_prev);
+            el_p = Some(pressure_hpa[i - 1] + frac * (pressure_hpa[i] - pressure_hpa[i - 1]));
+        }
+    }
+
+    (lfc_p, el_p)
+}
+
+fn package_style_reference_cape_cin_lfc_el(
+    height_m: &[f64],
+    pressure_pa: &[f64],
+    temperature_k: &[f64],
+    qv_kgkg: &[f64],
+    options: &ParcelOptions,
+) -> Result<CapeCinLfcEl, EcapeError> {
+    let (pressure_hpa, temperature_c, dewpoint_c) =
+        profile_to_met_inputs(pressure_pa, temperature_k, qv_kgkg);
+
+    if matches!(options.cape_type, CapeType::MixedLayer) {
+        return Ok(package_style_mixed_layer_cape_cin_lfc_el(
+            height_m,
+            &pressure_hpa,
+            &temperature_c,
+            &dewpoint_c,
+            options,
+        ));
+    }
+
+    let (origin_index, p_start_hpa, t_start_c, td_start_c) =
+        reference_parcel_start(height_m, pressure_pa, temperature_k, qv_kgkg, options);
+    let (cape_pressure_hpa, cape_temperature_c, cape_dewpoint_c) = match options.cape_type {
+        CapeType::SurfaceBased => (
+            pressure_hpa.clone(),
+            temperature_c.clone(),
+            dewpoint_c.clone(),
+        ),
+        CapeType::MixedLayer => {
+            let depth_hpa = options.mixed_layer_depth_pa.unwrap_or(10000.0) / 100.0;
+            let top_pressure_hpa = pressure_hpa[0] - depth_hpa;
+            let mut pressure_prof = vec![p_start_hpa];
+            let mut temperature_prof = vec![t_start_c];
+            let mut dewpoint_prof = vec![td_start_c];
+            for i in 0..pressure_hpa.len() {
+                if pressure_hpa[i] < top_pressure_hpa {
+                    pressure_prof.push(pressure_hpa[i]);
+                    temperature_prof.push(temperature_c[i]);
+                    dewpoint_prof.push(dewpoint_c[i]);
+                }
+            }
+            (pressure_prof, temperature_prof, dewpoint_prof)
+        }
+        CapeType::MostUnstable => (
+            pressure_hpa[origin_index..].to_vec(),
+            temperature_c[origin_index..].to_vec(),
+            dewpoint_c[origin_index..].to_vec(),
+        ),
+        CapeType::UserDefined => return Err(EcapeError::OriginNotFound),
+    };
+    let (cape_pressure_hpa, cape_temperature_c, cape_dewpoint_c, cape_parcel_temperature_c) =
+        parcel_profile_with_lcl_native(&cape_pressure_hpa, &cape_temperature_c, &cape_dewpoint_c);
+    let (cape_jkg, cin_jkg) = cape_cin_profile_native(
+        &cape_pressure_hpa,
+        &cape_temperature_c,
+        &cape_dewpoint_c,
+        &cape_parcel_temperature_c,
+        "bottom",
+        "top",
+    );
+
+    let (lfc_p, el_p) = match options.cape_type {
+        CapeType::SurfaceBased => {
+            let (lfc_p, _) = lfc_native_profile(
+                &cape_pressure_hpa,
+                &cape_temperature_c,
+                &cape_dewpoint_c,
+                &cape_parcel_temperature_c,
+                cape_dewpoint_c[0],
+                "top",
+            );
+            let (el_p, _) = el_native_profile(
+                &cape_pressure_hpa,
+                &cape_temperature_c,
+                &cape_dewpoint_c,
+                &cape_parcel_temperature_c,
+                "top",
+            );
+            (lfc_p, el_p)
+        }
+        CapeType::MixedLayer | CapeType::MostUnstable => {
+            let full_parcel_temperature_c =
+                wx_math::thermo::parcel_profile(&pressure_hpa, t_start_c, td_start_c);
+            let (lfc_p, _) = lfc_native_profile(
+                &pressure_hpa,
+                &temperature_c,
+                &dewpoint_c,
+                &full_parcel_temperature_c,
+                td_start_c,
+                "top",
+            );
+            let (el_p, _) = el_native_profile(
+                &pressure_hpa,
+                &temperature_c,
+                &dewpoint_c,
+                &full_parcel_temperature_c,
+                "top",
+            );
+            (lfc_p, el_p)
+        }
+        CapeType::UserDefined => return Err(EcapeError::OriginNotFound),
+    };
+
+    Ok(CapeCinLfcEl {
+        cape_jkg,
+        cin_jkg,
+        lfc_m: snap_height_to_last_level_below_pressure(&pressure_hpa, height_m, lfc_p),
+        el_m: snap_height_to_last_level_below_pressure(&pressure_hpa, height_m, el_p),
+        origin_index,
+        pressure_pa: Vec::new(),
+        height_m: Vec::new(),
+        parcel_temperature_k: Vec::new(),
+        buoyancy_ms2: Vec::new(),
+    })
 }
 
 fn unsaturated_adiabatic_lapse_rate(
@@ -391,7 +1210,8 @@ fn unsaturated_adiabatic_lapse_rate(
     let temperature_entrainment = -entrainment_rate * (temperature_parcel - temperature_env);
     let density_temperature_parcel = density_temperature(temperature_parcel, qv_parcel, qv_parcel);
     let density_temperature_env = density_temperature(temperature_env, qv_env, qv_env);
-    let buoyancy = G * (density_temperature_parcel - density_temperature_env) / density_temperature_env;
+    let buoyancy =
+        G * (density_temperature_parcel - density_temperature_env) / density_temperature_env;
     let c_pmv = (1.0 - qv_parcel) * CPD + qv_parcel * CPV;
     (-G / CPD) * ((1.0 + buoyancy / G) / (c_pmv / CPD)) + temperature_entrainment
 }
@@ -413,15 +1233,16 @@ fn saturated_adiabatic_lapse_rate(
     let qv_parcel = (1.0 - omega) * q_vsl + omega * q_vsi;
     let temperature_entrainment = -entrainment_rate * (temperature_parcel - temperature_env);
     let qv_entrainment = -entrainment_rate * (qv_parcel - qv_env);
-    let qt_entrainment =
-        qt_entrainment.unwrap_or(-entrainment_rate * (qt_parcel - qv_env) - prate * (qt_parcel - qv_parcel));
+    let qt_entrainment = qt_entrainment
+        .unwrap_or(-entrainment_rate * (qt_parcel - qv_env) - prate * (qt_parcel - qv_parcel));
     let q_condensate = qt_parcel - qv_parcel;
     let ql_parcel = q_condensate * (1.0 - omega);
     let qi_parcel = q_condensate * omega;
     let c_pm = (1.0 - qt_parcel) * CPD + qv_parcel * CPV + ql_parcel * CPL + qi_parcel * CPI;
     let density_temperature_parcel = density_temperature(temperature_parcel, qv_parcel, qt_parcel);
     let density_temperature_env = density_temperature(temperature_env, qv_env, qv_env);
-    let buoyancy = G * (density_temperature_parcel - density_temperature_env) / density_temperature_env;
+    let buoyancy =
+        G * (density_temperature_parcel - density_temperature_env) / density_temperature_env;
     let l_v = LV_TRIP + (temperature_parcel - T_TRIP) * (CPV - CPL);
     let l_i = LI_TRIP + (temperature_parcel - T_TRIP) * (CPL - CPI);
     let l_s = l_v + omega * l_i;
@@ -466,7 +1287,11 @@ fn layer_mean(values: &[f64], heights: &[f64], bottom: f64, top: f64) -> f64 {
         accum += 0.5 * (v0 + v1) * dz;
         weight += dz;
     }
-    if weight == 0.0 { values[0] } else { accum / weight }
+    if weight == 0.0 {
+        values[0]
+    } else {
+        accum / weight
+    }
 }
 
 fn wind_components_from_direction_speed_scalar(direction_deg: f64, speed: f64) -> (f64, f64) {
@@ -511,47 +1336,39 @@ fn resolve_parcel_origin(
             height_override_m: None,
         }),
         CapeType::MixedLayer => {
-            let top_p = (pressures[0] - options.mixed_layer_depth_pa.unwrap_or(10000.0))
-                .max(*pressures.last().unwrap_or(&pressures[0]));
-            let mut indices: Vec<usize> = (0..pressures.len()).filter(|&i| pressures[i] >= top_p).collect();
-            if indices.is_empty() {
-                indices.push(0);
-            }
-            let theta_mean = indices
-                .iter()
-                .map(|&i| potential_temperature(temperatures[i], pressures[i]))
-                .sum::<f64>()
-                / indices.len() as f64;
-            let q_mean = indices.iter().map(|&i| qv[i]).sum::<f64>() / indices.len() as f64;
+            let (_, p_start_hpa, t_start_c, td_start_c) =
+                reference_parcel_start(heights, pressures, temperatures, qv, options);
             Ok(ParcelOriginState {
                 index: 0,
-                theta_override_k: Some(theta_mean),
-                qv_override_kgkg: Some(q_mean),
+                theta_override_k: Some(potential_temperature(
+                    t_start_c + KELVIN_OFFSET,
+                    p_start_hpa * 100.0,
+                )),
+                qv_override_kgkg: Some(specific_humidity_from_dewpoint(
+                    p_start_hpa * 100.0,
+                    td_start_c + KELVIN_OFFSET,
+                )),
                 height_override_m: Some(heights[0]),
             })
         }
         CapeType::MostUnstable => {
+            let (best_idx, p_start_hpa, t_start_c, td_start_c) =
+                reference_parcel_start(heights, pressures, temperatures, qv, options);
             Ok(ParcelOriginState {
-                index: {
-                    let min_p = pressures[0] - 30000.0;
-                    let mut best_idx = 0usize;
-                    let mut best_thetae = f64::NEG_INFINITY;
-                    for i in 0..pressures.len() {
-                        if pressures[i] < min_p {
-                            break;
-                        }
-                        let td = dewpoint_from_specific_humidity(pressures[i], qv[i]);
-                        let thetae = equivalent_potential_temperature(temperatures[i], td, pressures[i]);
-                        if thetae > best_thetae {
-                            best_thetae = thetae;
-                            best_idx = i;
-                        }
-                    }
-                    best_idx
-                },
+                index: best_idx,
                 theta_override_k: None,
                 qv_override_kgkg: None,
-                height_override_m: None,
+                height_override_m: if (pressures[best_idx] - p_start_hpa * 100.0).abs() < 1.0
+                    && (temperatures[best_idx] - (t_start_c + KELVIN_OFFSET)).abs() < 1e-6
+                    && (dewpoint_from_specific_humidity(pressures[best_idx], qv[best_idx])
+                        - (td_start_c + KELVIN_OFFSET))
+                        .abs()
+                        < 1e-6
+                {
+                    None
+                } else {
+                    Some(heights[best_idx])
+                },
             })
         }
         CapeType::UserDefined => Err(EcapeError::OriginNotFound),
@@ -569,7 +1386,8 @@ fn lcl_pressure(temp_k: f64, dewpoint_k: f64, pressure_pa: f64) -> f64 {
 
 fn lifting_condensation_level(temp_k: f64, dewpoint_k: f64, pressure_pa: f64) -> (f64, f64) {
     let plcl = lcl_pressure(temp_k, dewpoint_k, pressure_pa);
-    let zlcl = (RD * 0.5 * (temp_k + lcl_temperature(temp_k, dewpoint_k)) / G) * (pressure_pa / plcl).ln();
+    let zlcl =
+        (RD * 0.5 * (temp_k + lcl_temperature(temp_k, dewpoint_k)) / G) * (pressure_pa / plcl).ln();
     (plcl, zlcl.max(0.0))
 }
 
@@ -605,7 +1423,7 @@ fn resolve_storm_motion(
         StormMotionType::UserDefined => options
             .storm_motion_u_ms
             .zip(options.storm_motion_v_ms)
-            .unwrap_or(mean),
+            .unwrap_or(rm),
     }
 }
 
@@ -654,7 +1472,11 @@ fn parcel_profile_from(
     let origin_qv = origin_qv_override.unwrap_or(qv_env[origin_idx]);
     let mut parcel_qv = origin_qv;
     let mut parcel_qt = parcel_qv;
-    let prate = if pseudoadiabatic { 1.0 / DEFAULT_STEP_M } else { 0.0 };
+    let prate = if pseudoadiabatic {
+        1.0 / DEFAULT_STEP_M
+    } else {
+        0.0
+    };
     let mut dqt_dz = 0.0;
 
     let mut out_p = vec![parcel_pressure];
@@ -665,7 +1487,8 @@ fn parcel_profile_from(
 
     while parcel_pressure >= pressures[pressures.len() - 1] {
         let env_temperature = interp_profile_at_height(heights, temperatures, parcel_height);
-        let parcel_saturation_qv = (1.0 - parcel_qt) * r_sat(parcel_temperature, parcel_pressure, 1);
+        let parcel_saturation_qv =
+            (1.0 - parcel_qt) * r_sat(parcel_temperature, parcel_pressure, 1);
         if parcel_saturation_qv > parcel_qv {
             parcel_pressure = pressure_at_height(parcel_pressure, DEFAULT_STEP_M, env_temperature);
             parcel_height += DEFAULT_STEP_M;
@@ -761,7 +1584,7 @@ fn parcel_profile_from(
     }
 }
 
-pub fn custom_cape_cin_lfc_el(
+fn continuous_cape_cin_lfc_el(
     height_m: &[f64],
     pressure_pa: &[f64],
     temperature_k: &[f64],
@@ -769,7 +1592,14 @@ pub fn custom_cape_cin_lfc_el(
     options: &ParcelOptions,
 ) -> Result<CapeCinLfcEl, EcapeError> {
     let zero_wind = vec![0.0; height_m.len()];
-    validate_profile(height_m, pressure_pa, temperature_k, qv_kgkg, &zero_wind, &zero_wind)?;
+    validate_profile(
+        height_m,
+        pressure_pa,
+        temperature_k,
+        qv_kgkg,
+        &zero_wind,
+        &zero_wind,
+    )?;
     let origin = resolve_parcel_origin(height_m, pressure_pa, temperature_k, qv_kgkg, options)?;
     let origin_idx = origin.index;
 
@@ -809,7 +1639,11 @@ pub fn custom_cape_cin_lfc_el(
         let env_t = interp_profile_at_height(height_m, temperature_k, z0);
         let env_q = interp_profile_at_height(height_m, qv_kgkg, z0);
         let env_t_rho = density_temperature(env_t, env_q, env_q);
-        let parcel_t_rho = density_temperature(profile.temperature_k[i], profile.qv_kgkg[i], profile.qt_kgkg[i]);
+        let parcel_t_rho = density_temperature(
+            profile.temperature_k[i],
+            profile.qv_kgkg[i],
+            profile.qt_kgkg[i],
+        );
         let buoyancy = G * (parcel_t_rho - env_t_rho) / env_t_rho;
         if buoyancy > 0.0 && el.is_none() {
             el = Some(z0);
@@ -839,6 +1673,29 @@ pub fn custom_cape_cin_lfc_el(
         parcel_temperature_k: profile.temperature_k,
         buoyancy_ms2: profile.buoyancy_ms2,
     })
+}
+
+pub fn custom_cape_cin_lfc_el(
+    height_m: &[f64],
+    pressure_pa: &[f64],
+    temperature_k: &[f64],
+    qv_kgkg: &[f64],
+    options: &ParcelOptions,
+) -> Result<CapeCinLfcEl, EcapeError> {
+    if options.origin_pressure_pa.is_none()
+        && options.origin_height_m.is_none()
+        && !matches!(options.cape_type, CapeType::UserDefined)
+    {
+        return package_style_reference_cape_cin_lfc_el(
+            height_m,
+            pressure_pa,
+            temperature_k,
+            qv_kgkg,
+            options,
+        );
+    }
+
+    continuous_cape_cin_lfc_el(height_m, pressure_pa, temperature_k, qv_kgkg, options)
 }
 
 pub fn summarize_parcel_profile(
@@ -875,7 +1732,11 @@ pub fn summarize_parcel_profile(
         let env_t = interp_profile_at_height(env_height_m, env_temperature_k, z);
         let env_q = interp_profile_at_height(env_height_m, env_qv_kgkg, z);
         let env_t_rho = density_temperature(env_t, env_q, env_q);
-        let parcel_t_rho = density_temperature(parcel_temperature_k[i], parcel_qv_kgkg[i], parcel_qt_kgkg[i]);
+        let parcel_t_rho = density_temperature(
+            parcel_temperature_k[i],
+            parcel_qv_kgkg[i],
+            parcel_qt_kgkg[i],
+        );
         buoyancy_ms2.push(G * (parcel_t_rho - env_t_rho) / env_t_rho);
     }
 
@@ -973,7 +1834,12 @@ fn compute_ncape_reference(
     let ind_lfc = height_m
         .iter()
         .enumerate()
-        .min_by(|a, b| (a.1 - lfc_m).abs().partial_cmp(&(b.1 - lfc_m).abs()).unwrap())
+        .min_by(|a, b| {
+            (a.1 - lfc_m)
+                .abs()
+                .partial_cmp(&(b.1 - lfc_m).abs())
+                .unwrap()
+        })
         .map(|(i, _)| i)
         .unwrap_or(0);
     let ind_el = height_m
@@ -997,7 +1863,9 @@ fn calc_ecape_a(sr_wind: f64, psi: f64, ncape: f64, cape: f64) -> f64 {
     let denom = 4.0 * psi / sr2;
     let term_a = sr2 / 2.0;
     let term_b = (-1.0 - psi - (2.0 * psi / sr2) * ncape) / denom;
-    let term_c = ((1.0 + psi + (2.0 * psi / sr2) * ncape).powi(2) + 8.0 * (psi / sr2) * (cape - psi * ncape)).sqrt()
+    let term_c = ((1.0 + psi + (2.0 * psi / sr2) * ncape).powi(2)
+        + 8.0 * (psi / sr2) * (cape - psi * ncape))
+        .sqrt()
         / denom;
     let ecape_a = term_a + term_b + term_c;
     if ecape_a >= 0.0 { ecape_a } else { 0.0 }
@@ -1023,10 +1891,13 @@ pub fn calc_ecape_ncape_from_reference(
     lfc_m: Option<f64>,
     el_m: Option<f64>,
 ) -> EcapeNcape {
-    let (storm_u, storm_v) = resolve_storm_motion(pressure_pa, height_m, u_wind_ms, v_wind_ms, options);
+    let (storm_u, storm_v) =
+        resolve_storm_motion(pressure_pa, height_m, u_wind_ms, v_wind_ms, options);
     let bottom = options.inflow_layer_bottom_m.unwrap_or(0.0);
     let top = options.inflow_layer_top_m.unwrap_or(1000.0);
-    let vsr = calc_sr_wind(height_m, u_wind_ms, v_wind_ms, storm_u, storm_v, bottom, top);
+    let vsr = calc_sr_wind(
+        height_m, u_wind_ms, v_wind_ms, storm_u, storm_v, bottom, top,
+    );
     let ncape = match (lfc_m, el_m) {
         (Some(lfc), Some(el)) if el > lfc => {
             compute_ncape_reference(height_m, pressure_pa, temperature_k, qv_kgkg, lfc, el)
@@ -1061,7 +1932,14 @@ pub fn calc_ecape_ncape(
     v_wind_ms: &[f64],
     options: &ParcelOptions,
 ) -> Result<EcapeNcape, EcapeError> {
-    validate_profile(height_m, pressure_pa, temperature_k, qv_kgkg, u_wind_ms, v_wind_ms)?;
+    validate_profile(
+        height_m,
+        pressure_pa,
+        temperature_k,
+        qv_kgkg,
+        u_wind_ms,
+        v_wind_ms,
+    )?;
     let cape_info = custom_cape_cin_lfc_el(height_m, pressure_pa, temperature_k, qv_kgkg, options)?;
     Ok(calc_ecape_ncape_from_reference(
         height_m,
@@ -1091,7 +1969,14 @@ pub fn calc_ecape_parcel(
         .zip(dewpoint_k.iter())
         .map(|(p, td)| specific_humidity_from_dewpoint(*p, *td))
         .collect();
-    validate_profile(height_m, pressure_pa, temperature_k, &qv, u_wind_ms, v_wind_ms)?;
+    validate_profile(
+        height_m,
+        pressure_pa,
+        temperature_k,
+        &qv,
+        u_wind_ms,
+        v_wind_ms,
+    )?;
     let origin = resolve_parcel_origin(height_m, pressure_pa, temperature_k, &qv, options)?;
     let origin_idx = origin.index;
     let origin_z = origin.height_override_m.unwrap_or(height_m[origin_idx]);
@@ -1132,7 +2017,13 @@ pub fn calc_ecape_parcel(
     let entrainment = options.entrainment_rate.unwrap_or_else(|| {
         if let (Some(el), vsr) = (ecape_info.el_m, ecape_info.storm_relative_wind_ms) {
             if el > origin_z && base.cape_jkg > 0.0 {
-                entrainment_rate(base.cape_jkg, ecape_info.ecape_jkg, ecape_info.ncape_jkg, vsr, el - origin_z)
+                entrainment_rate(
+                    base.cape_jkg,
+                    ecape_info.ecape_jkg,
+                    ecape_info.ncape_jkg,
+                    vsr,
+                    el - origin_z,
+                )
             } else {
                 0.0
             }

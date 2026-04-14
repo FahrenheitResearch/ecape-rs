@@ -1,4 +1,7 @@
-use ecape_rs::{calc_ecape_ncape, calc_ecape_ncape_from_reference, calc_ecape_parcel, summarize_parcel_profile, CapeType, ParcelOptions, ParcelProfile, StormMotionType};
+use ecape_rs::{
+    CapeType, ParcelOptions, ParcelProfile, StormMotionType, calc_ecape_ncape,
+    calc_ecape_ncape_from_reference, calc_ecape_parcel, summarize_parcel_profile,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 use std::time::Instant;
@@ -35,6 +38,11 @@ struct OutputPayload {
     reps: usize,
     elapsed_ms: f64,
     per_call_ms: f64,
+    reference_ecape_jkg: f64,
+    reference_ncape_jkg: f64,
+    reference_cape_jkg: f64,
+    reference_lfc_m: Option<f64>,
+    reference_el_m: Option<f64>,
     ecape_jkg: f64,
     ncape_jkg: f64,
     cape_jkg: f64,
@@ -137,16 +145,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options_payload = payload.options;
     let options = ParcelOptions {
         cape_type: parse_cape_type(options_payload.as_ref().and_then(|o| o.cape_type.clone())),
-        storm_motion_type: parse_storm_motion_type(options_payload.as_ref().and_then(|o| o.storm_motion_type.clone())),
+        storm_motion_type: parse_storm_motion_type(
+            options_payload
+                .as_ref()
+                .and_then(|o| o.storm_motion_type.clone()),
+        ),
         origin_pressure_pa: options_payload.as_ref().and_then(|o| o.origin_pressure_pa),
         origin_height_m: options_payload.as_ref().and_then(|o| o.origin_height_m),
-        mixed_layer_depth_pa: options_payload.as_ref().and_then(|o| o.mixed_layer_depth_pa).or(Some(10000.0)),
-        inflow_layer_bottom_m: options_payload.as_ref().and_then(|o| o.inflow_layer_bottom_m).or(Some(0.0)),
-        inflow_layer_top_m: options_payload.as_ref().and_then(|o| o.inflow_layer_top_m).or(Some(1000.0)),
+        mixed_layer_depth_pa: options_payload
+            .as_ref()
+            .and_then(|o| o.mixed_layer_depth_pa)
+            .or(Some(10000.0)),
+        inflow_layer_bottom_m: options_payload
+            .as_ref()
+            .and_then(|o| o.inflow_layer_bottom_m)
+            .or(Some(0.0)),
+        inflow_layer_top_m: options_payload
+            .as_ref()
+            .and_then(|o| o.inflow_layer_top_m)
+            .or(Some(1000.0)),
         storm_motion_u_ms: options_payload.as_ref().and_then(|o| o.storm_motion_u_ms),
         storm_motion_v_ms: options_payload.as_ref().and_then(|o| o.storm_motion_v_ms),
         entrainment_rate: options_payload.as_ref().and_then(|o| o.entrainment_rate),
-        pseudoadiabatic: options_payload.as_ref().and_then(|o| o.pseudoadiabatic).or(Some(true)),
+        pseudoadiabatic: options_payload
+            .as_ref()
+            .and_then(|o| o.pseudoadiabatic)
+            .or(Some(true)),
     };
 
     let pressure_pa: Vec<f64> = payload.pressure_hpa.iter().map(|v| v * 100.0).collect();
@@ -159,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let _summary = calc_ecape_ncape(
+    let summary = calc_ecape_ncape(
         &payload.height_m,
         &pressure_pa,
         &payload.temperature_k,
@@ -225,6 +249,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         reps,
         elapsed_ms,
         per_call_ms: elapsed_ms / reps as f64,
+        reference_ecape_jkg: summary.ecape_jkg,
+        reference_ncape_jkg: summary.ncape_jkg,
+        reference_cape_jkg: summary.cape_jkg,
+        reference_lfc_m: summary.lfc_m,
+        reference_el_m: summary.el_m,
         ecape_jkg: aligned_ecape.ecape_jkg,
         ncape_jkg: aligned_ecape.ncape_jkg,
         cape_jkg: aligned_summary.cape_jkg,
