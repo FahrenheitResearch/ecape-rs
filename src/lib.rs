@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
+use std::{error::Error, fmt, str::FromStr};
 
 const RD: f64 = 287.04;
 const RV: f64 = 461.5;
@@ -19,7 +20,7 @@ const AVG_MOLAR_MASS: f64 = 0.029;
 const DEFAULT_STEP_M: f64 = 20.0;
 const KELVIN_OFFSET: f64 = 273.15;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapeType {
     SurfaceBased,
@@ -28,13 +29,120 @@ pub enum CapeType {
     UserDefined,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StormMotionType {
     RightMoving,
     LeftMoving,
     MeanWind,
     UserDefined,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseEcapeOptionError {
+    option: &'static str,
+    value: String,
+}
+
+impl ParseEcapeOptionError {
+    fn new(option: &'static str, value: &str) -> Self {
+        Self {
+            option,
+            value: value.to_string(),
+        }
+    }
+
+    pub fn option(&self) -> &'static str {
+        self.option
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+impl fmt::Display for ParseEcapeOptionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid {} value: {}", self.option, self.value)
+    }
+}
+
+impl Error for ParseEcapeOptionError {}
+
+fn normalized_option_token(value: &str) -> String {
+    value.trim().to_ascii_lowercase().replace(['-', ' '], "_")
+}
+
+impl CapeType {
+    pub fn parse_normalized(value: &str) -> Result<Self, ParseEcapeOptionError> {
+        match normalized_option_token(value).as_str() {
+            "sb" | "surface" | "surface_based" => Ok(Self::SurfaceBased),
+            "ml" | "mixed_layer" => Ok(Self::MixedLayer),
+            "mu" | "most_unstable" => Ok(Self::MostUnstable),
+            "user" | "user_defined" => Ok(Self::UserDefined),
+            _ => Err(ParseEcapeOptionError::new("cape_type", value)),
+        }
+    }
+
+    pub fn parse_or_default(value: Option<&str>) -> Self {
+        value
+            .and_then(|raw| Self::parse_normalized(raw).ok())
+            .unwrap_or_default()
+    }
+}
+
+impl FromStr for CapeType {
+    type Err = ParseEcapeOptionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse_normalized(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for CapeType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse_normalized(&raw).map_err(de::Error::custom)
+    }
+}
+
+impl StormMotionType {
+    pub fn parse_normalized(value: &str) -> Result<Self, ParseEcapeOptionError> {
+        match normalized_option_token(value).as_str() {
+            "right_moving" | "bunkers_rm" | "rm" => Ok(Self::RightMoving),
+            "left_moving" | "bunkers_lm" | "lm" => Ok(Self::LeftMoving),
+            "mean_wind" | "mean" => Ok(Self::MeanWind),
+            "user" | "user_defined" => Ok(Self::UserDefined),
+            _ => Err(ParseEcapeOptionError::new("storm_motion_type", value)),
+        }
+    }
+
+    pub fn parse_or_default(value: Option<&str>) -> Self {
+        value
+            .and_then(|raw| Self::parse_normalized(raw).ok())
+            .unwrap_or_default()
+    }
+}
+
+impl FromStr for StormMotionType {
+    type Err = ParseEcapeOptionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse_normalized(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for StormMotionType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse_normalized(&raw).map_err(de::Error::custom)
+    }
 }
 
 impl Default for CapeType {

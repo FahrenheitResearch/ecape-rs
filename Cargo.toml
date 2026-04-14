@@ -1,6 +1,6 @@
 [package]
 name = "ecape-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Rust ECAPE parcel calculations with parity-verified behavior against ecape-parcel"
 license = "MIT"

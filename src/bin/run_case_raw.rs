@@ -50,24 +50,6 @@ struct OutputPayload {
     parcel_qt_kgkg: Vec<f64>,
 }
 
-fn parse_cape_type(value: Option<String>) -> CapeType {
-    match value.as_deref() {
-        Some("most_unstable") => CapeType::MostUnstable,
-        Some("mixed_layer") => CapeType::MixedLayer,
-        Some("user_defined") => CapeType::UserDefined,
-        _ => CapeType::SurfaceBased,
-    }
-}
-
-fn parse_storm_motion_type(value: Option<String>) -> StormMotionType {
-    match value.as_deref() {
-        Some("left_moving") => StormMotionType::LeftMoving,
-        Some("mean_wind") => StormMotionType::MeanWind,
-        Some("user_defined") => StormMotionType::UserDefined,
-        _ => StormMotionType::RightMoving,
-    }
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     io::stdin().read_to_string(&mut input)?;
@@ -76,11 +58,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options_payload = payload.options;
     let options = ParcelOptions {
-        cape_type: parse_cape_type(options_payload.as_ref().and_then(|o| o.cape_type.clone())),
-        storm_motion_type: parse_storm_motion_type(
+        cape_type: CapeType::parse_or_default(
             options_payload
                 .as_ref()
-                .and_then(|o| o.storm_motion_type.clone()),
+                .and_then(|o| o.cape_type.as_deref()),
+        ),
+        storm_motion_type: StormMotionType::parse_or_default(
+            options_payload
+                .as_ref()
+                .and_then(|o| o.storm_motion_type.as_deref()),
         ),
         origin_pressure_pa: options_payload.as_ref().and_then(|o| o.origin_pressure_pa),
         origin_height_m: options_payload.as_ref().and_then(|o| o.origin_height_m),
