@@ -19,7 +19,15 @@ The sensitive meteorological primitives come from the `metrust-py` Rust crates (
 
 Current validation is centered on direct parity against Python `ecape-parcel` 1.2.2.
 
-Highlights from the methods paper:
+First-stage parity means:
+
+- `|dE_parcel| < 2 J kg^-1`
+- max `|dTrho| < 0.01 K`
+- no zero/nonzero LFC or EL mismatch
+- no empty-path or path-energy mismatch
+- Python reference-package exceptions tracked separately from Rust failures
+
+Current highlights:
 
 | Check | Result |
 | --- | ---: |
@@ -31,14 +39,51 @@ Highlights from the methods paper:
 
 For the HRRR profile benchmark, Python `ecape-parcel` package calls took about `2.8-6.1 s` per configuration. Rust solver calls took about `0.45-0.65 ms` in the same harness, a package-call speedup of roughly `5,600-13,000x` for that benchmark. These timings separate the parcel solver from HRRR GRIB loading, profile extraction, plotting, and full-grid production.
 
-## Methods Paper
+## Validation Method
 
-The current methods-paper draft is included in:
+The parity harness compares Python `ecape-parcel` output against `ecape-rs` output on the same normalized profile input. The comparison uses raw 20 m parcel paths where available, not only scalar summary values.
 
-- [docs/method_validation/main.pdf](docs/method_validation/main.pdf)
-- [docs/method_validation/main.tex](docs/method_validation/main.tex)
+For each profile/configuration, the harness records:
 
-The paper documents the compatibility harness, no-entrainment limit checks, compatibility fixes, target/control parity sweep, bounded random/stress/storm-motion v2 sweep, runtime separation, and current limitations.
+- parcel pressure, height, temperature, water vapor, total water, density temperature, and buoyancy paths
+- integrated positive buoyancy, CIN, LFC, and EL
+- first divergent parcel-path step
+- Rust/Python runtime
+- pass/fail flags and reference-exception flags
+
+The validation suite currently includes:
+
+- an internal no-entrainment limit test against the Rust continuous CAPE path
+- a synthetic fixture
+- a 6 May 2024 HRRR warm-sector profile
+- 50 tornado target profiles and 200 displaced controls
+- 100 random HRRR profiles
+- 10 curated stress profiles
+- right-moving, left-moving, mean-wind, and user-defined storm-motion modes in the bounded v2 sweep
+
+## Compatibility Fixes Found By The Harness
+
+The parity harness has already caught implementation details that materially affect scientific output. The current Rust behavior has been adjusted to match `ecape-parcel` for:
+
+- mixed-layer source construction
+- humidity handling and mixed-layer dewpoint round trips
+- most-unstable parcel selection
+- zero-CAPE entraining-path behavior
+- storm-motion and VSR handling in entraining configurations
+
+These are part of why direct reference-package parity is treated as a required validation layer rather than a cosmetic check.
+
+## Research Use
+
+`ecape-rs` is intended to make ecape-parcel-style full parcel-path ECAPE cheap enough for:
+
+- HRRR grid-scale ECAPE diagnostics
+- archive-scale profile sweeps
+- analytic ECAPE versus full parcel-path ECAPE difference atlases
+- ECAPE-EHI and other experimental severe-weather composites
+- connected-plume/object diagnostics
+
+The current validation supports methods development and research use. It does not by itself establish operational forecast skill for downstream severe-weather products.
 
 ## Build
 
