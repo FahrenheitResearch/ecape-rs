@@ -132,7 +132,7 @@ The expected input schema is the same schema emitted by the HRRR profile probes 
 ## Scope And Limitations
 
 - `ecape-rs` targets compatibility with `ecape-parcel` behavior, including its mixed-layer parcel construction and storm-motion behavior.
-- The methods paper does not claim operational forecast skill. Severe-weather products such as ECAPE-EHI and plume-object diagnostics still need independent forecast verification.
+- This validation does not claim operational forecast skill. Severe-weather products such as ECAPE-EHI and plume-object diagnostics still need independent forecast verification.
 - Reference-package exceptions are tracked separately from Rust/Python parity failures. If Python `ecape-parcel` does not return a parcel path for a configuration, that row is not counted as a Rust pass or failure.
 
 ## License
