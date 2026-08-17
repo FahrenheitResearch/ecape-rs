@@ -138,10 +138,11 @@ The expected input schema is the same schema emitted by the HRRR profile probes 
 ## Credits
 
 - ECAPE theory and the analytic approximation: [Peters et al. (2022, *J. Atmos. Sci.*)](https://journals.ametsoc.org/view/journals/atsc/79/3/JAS-D-21-0118.1.xml).
-- Reference parcel-path implementation: [`ecape-parcel-py`](https://github.com/a-urq/ecape-parcel-py) by [Amelia Urquhart](https://github.com/a-urq), University of Oklahoma. `ecape-rs` follows its parcel construction and ascent behavior, and every parity number above is measured against it.
+- Analytic ECAPE calculation: [`ecape`](https://github.com/citylikeamradio/ecape) by [Robert Capella](https://github.com/citylikeamradio). The ψ, NCAPE, analytic-ECAPE and entrainment-rate routines in this crate follow that implementation, by way of `ecape_calc.py` in `ecape-parcel-py`.
+- Reference parcel-path implementation: [`ecape-parcel-py`](https://github.com/a-urq/ecape-parcel-py) by [Amelia Urquhart](https://github.com/a-urq), University of Oklahoma, who added the customizable inflow layer and storm motion that this crate exposes. `ecape-rs` follows its parcel construction and ascent behavior, and every parity number above is measured against it.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-`ecape-rs` is derived in part from `ecape-parcel-py`, Copyright (c) 2023 Amelia Urquhart, also MIT. That notice is retained in [LICENSE](LICENSE).
+`ecape-rs` is derived in part from `ecape-parcel-py`, Copyright (c) 2023 Amelia Urquhart, and from `ecape`, Copyright (c) 2023-present Robert Capella — both MIT. Those notices are retained in [LICENSE](LICENSE).

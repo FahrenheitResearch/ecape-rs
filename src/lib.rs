@@ -241,8 +241,17 @@ pub struct EcapeNcape {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcapeParcelResult {
+    /// ECAPE from the Peters analytic expression, evaluated on the undiluted
+    /// parcel. This is an *estimate* of what an entraining parcel retains.
+    ///
+    /// Do not feed this back into the analytic expression: it already carries
+    /// the entrainment reduction, and a second pass would apply it twice.
     pub ecape_jkg: f64,
+    /// NCAPE of the environment, from the undiluted parcel's LFC and EL.
     pub ncape_jkg: f64,
+    /// Integrated positive buoyancy of the *entraining* parcel path -- ECAPE
+    /// measured rather than estimated. Compare against [`Self::ecape_jkg`] for
+    /// the analytic-versus-path difference.
     pub cape_jkg: f64,
     pub cin_jkg: f64,
     pub lfc_m: Option<f64>,
@@ -2387,28 +2396,27 @@ pub fn calc_ecape_parcel(
         temperature_k,
         &qv,
     );
-    let parcel_ecape = calc_ecape_ncape_from_reference(
-        height_m,
-        pressure_pa,
-        temperature_k,
-        &qv,
-        u_wind_ms,
-        v_wind_ms,
-        options,
-        parcel_summary.cape_jkg,
-        parcel_summary.lfc_m,
-        parcel_summary.el_m,
-    );
-
+    // ECAPE is reported from `ecape_info`, the first (undiluted) pass.
+    //
+    // The Peters analytic expression is defined on the UNDILUTED parcel's
+    // CAPE, NCAPE and EL: it *predicts* what an entraining parcel retains.
+    // Applying it to `parcel_summary`, which is already the entraining
+    // parcel, would subtract the entrainment loss a second time from a value
+    // that already carries it.
+    //
+    // The full-path counterpart is `cape_jkg` below -- the integrated
+    // buoyancy of the entraining parcel, i.e. ECAPE measured rather than
+    // estimated. Reporting both is deliberate; their difference is the
+    // analytic-versus-path spread this crate exists to quantify.
     Ok(EcapeParcelResult {
-        ecape_jkg: parcel_ecape.ecape_jkg,
-        ncape_jkg: parcel_ecape.ncape_jkg,
+        ecape_jkg: ecape_info.ecape_jkg,
+        ncape_jkg: ecape_info.ncape_jkg,
         cape_jkg: parcel_summary.cape_jkg,
         cin_jkg: parcel_summary.cin_jkg,
         lfc_m: parcel_summary.lfc_m,
         el_m: parcel_summary.el_m,
-        storm_motion_u_ms: parcel_ecape.storm_motion_u_ms,
-        storm_motion_v_ms: parcel_ecape.storm_motion_v_ms,
+        storm_motion_u_ms: ecape_info.storm_motion_u_ms,
+        storm_motion_v_ms: ecape_info.storm_motion_v_ms,
         parcel_profile: parcel,
     })
 }

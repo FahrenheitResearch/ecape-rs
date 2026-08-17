@@ -1,6 +1,6 @@
 use ecape_rs::{
-    CapeType, ParcelOptions, ParcelProfile, StormMotionType, calc_ecape_ncape,
-    calc_ecape_ncape_from_reference, calc_ecape_parcel, summarize_parcel_profile,
+    CapeType, ParcelOptions, ParcelProfile, StormMotionType, calc_ecape_ncape, calc_ecape_parcel,
+    summarize_parcel_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
@@ -218,19 +218,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &payload.temperature_k,
         &qv,
     );
-    let aligned_ecape = calc_ecape_ncape_from_reference(
-        &payload.height_m,
-        &pressure_pa,
-        &payload.temperature_k,
-        &qv,
-        &payload.u_wind_ms,
-        &payload.v_wind_ms,
-        &options,
-        aligned_summary.cape_jkg,
-        aligned_summary.lfc_m,
-        aligned_summary.el_m,
-    );
-
+    // ECAPE and NCAPE come straight from the solver, which evaluates the
+    // analytic expression on the undiluted parcel. Re-deriving them here from
+    // `aligned_summary` -- the entraining parcel -- would apply the
+    // entrainment reduction twice. Alignment only affects the path and the
+    // quantities integrated along it.
     let output = OutputPayload {
         reps,
         elapsed_ms,
@@ -240,14 +232,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         reference_cape_jkg: summary.cape_jkg,
         reference_lfc_m: summary.lfc_m,
         reference_el_m: summary.el_m,
-        ecape_jkg: aligned_ecape.ecape_jkg,
-        ncape_jkg: aligned_ecape.ncape_jkg,
+        ecape_jkg: result.ecape_jkg,
+        ncape_jkg: result.ncape_jkg,
         cape_jkg: aligned_summary.cape_jkg,
         cin_jkg: aligned_summary.cin_jkg,
         lfc_m: aligned_summary.lfc_m,
         el_m: aligned_summary.el_m,
-        storm_motion_u_ms: aligned_ecape.storm_motion_u_ms,
-        storm_motion_v_ms: aligned_ecape.storm_motion_v_ms,
+        storm_motion_u_ms: result.storm_motion_u_ms,
+        storm_motion_v_ms: result.storm_motion_v_ms,
         parcel_pressure_pa: aligned_profile.pressure_pa,
         parcel_height_m: aligned_profile.height_m,
         parcel_temperature_k: aligned_profile.temperature_k,

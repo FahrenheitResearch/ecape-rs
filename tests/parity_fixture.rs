@@ -228,3 +228,71 @@ fn nonentraining_paths_match_continuous_cape_limit() {
         }
     }
 }
+
+/// ECAPE is a property of the environment, not of whichever parcel we chose to
+/// integrate. The Peters analytic expression is evaluated on the UNDILUTED
+/// parcel and only then used to derive an entrainment rate, so changing the
+/// entrainment rate must move the parcel path without moving ECAPE.
+///
+/// Re-applying the expression to the entraining parcel instead subtracts the
+/// entrainment loss a second time from a value that already carries it. That
+/// regression is invisible to the Python parity harness -- upstream
+/// `calc_ecape_parcel` returns a parcel path and no ECAPE scalar at all, so
+/// there is nothing on the Python side to compare against. This test is the
+/// only guard against a silently double-diluted ECAPE.
+#[test]
+fn ecape_does_not_depend_on_the_integrated_path() {
+    let fixture = fixture();
+
+    for cape_type in [
+        CapeType::SurfaceBased,
+        CapeType::MixedLayer,
+        CapeType::MostUnstable,
+    ] {
+        let run = |entrainment_rate: Option<f64>| {
+            let options = ParcelOptions {
+                cape_type,
+                storm_motion_type: StormMotionType::UserDefined,
+                storm_motion_u_ms: Some(fixture.storm_motion_u_ms),
+                storm_motion_v_ms: Some(fixture.storm_motion_v_ms),
+                entrainment_rate,
+                ..ParcelOptions::default()
+            };
+            calc_ecape_parcel(
+                &fixture.height_m,
+                &fixture.pressure_pa,
+                &fixture.temperature_k,
+                &fixture.dewpoint_k,
+                &fixture.u_wind_ms,
+                &fixture.v_wind_ms,
+                &options,
+            )
+            .unwrap()
+        };
+
+        let entraining = run(None);
+        let undiluted = run(Some(0.0));
+
+        // The two runs really do integrate different parcels, so the ECAPE
+        // agreement below cannot pass vacuously.
+        assert!(
+            undiluted.cape_jkg > entraining.cape_jkg,
+            "{cape_type:?}: entrainment did not reduce path CAPE (entraining={}, undiluted={})",
+            entraining.cape_jkg,
+            undiluted.cape_jkg
+        );
+
+        // Yet both report the same ECAPE, because both derive it from the
+        // undiluted analysis.
+        assert_close(
+            &format!("{cape_type:?} ecape"),
+            entraining.ecape_jkg,
+            undiluted.ecape_jkg,
+        );
+        assert_close(
+            &format!("{cape_type:?} ncape"),
+            entraining.ncape_jkg,
+            undiluted.ncape_jkg,
+        );
+    }
+}
