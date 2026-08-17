@@ -2,7 +2,7 @@
 
 `ecape-rs` is a Rust implementation of `ecape-parcel`-style entraining parcel-path ECAPE diagnostics. The goal is direct compatibility with the public Python `ecape-parcel` package while making the calculation fast enough for profile batches, HRRR-grid diagnostics, and archive-scale research.
 
-This crate is not a new ECAPE theory. Peters et al. provide the theory and analytic ECAPE approximation; `ecape-parcel` provides the public Peters-checked Python parcel-path implementation; `ecape-rs` provides a high-throughput Rust implementation of the same class of parcel-path calculation.
+This crate is not a new ECAPE theory. Peters et al. provide the theory and analytic ECAPE approximation; [`ecape-parcel-py`](https://github.com/a-urq/ecape-parcel-py) by [Amelia Urquhart](https://github.com/a-urq) provides the public Peters-checked Python parcel-path implementation; `ecape-rs` ports that implementation to Rust and makes it fast enough to run at grid and archive scale.
 
 ## What It Implements
 
@@ -135,6 +135,13 @@ The expected input schema is the same schema emitted by the HRRR profile probes 
 - This validation does not claim operational forecast skill. Severe-weather products such as ECAPE-EHI and plume-object diagnostics still need independent forecast verification.
 - Reference-package exceptions are tracked separately from Rust/Python parity failures. If Python `ecape-parcel` does not return a parcel path for a configuration, that row is not counted as a Rust pass or failure.
 
+## Credits
+
+- ECAPE theory and the analytic approximation: [Peters et al. (2022, *J. Atmos. Sci.*)](https://journals.ametsoc.org/view/journals/atsc/79/3/JAS-D-21-0118.1.xml).
+- Reference parcel-path implementation: [`ecape-parcel-py`](https://github.com/a-urq/ecape-parcel-py) by [Amelia Urquhart](https://github.com/a-urq), University of Oklahoma. `ecape-rs` follows its parcel construction and ascent behavior, and every parity number above is measured against it.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+`ecape-rs` is derived in part from `ecape-parcel-py`, Copyright (c) 2023 Amelia Urquhart, also MIT. That notice is retained in [LICENSE](LICENSE).
